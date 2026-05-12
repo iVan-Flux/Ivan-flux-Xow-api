@@ -1,5 +1,15 @@
 {
-  "rewrites": [
-    { "source": "/api/matches", "destination": "/api/matches" }
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/matches.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/matches",
+      "dest": "api/matches.py"
+    }
   ]
 }
