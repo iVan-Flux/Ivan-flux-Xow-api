@@ -1,28 +1,35 @@
-name: Python API CI
+name: Generate Encrypted JSON
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  schedule:
+    - cron: '0 * * * *' # প্রতি ঘন্টায় রান হবে
+  workflow_dispatch: # ম্যানুয়ালি রান করার অপশন
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python 3.9
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.9
+      - name: Checkout Repo
+        uses: actions/checkout@v3
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
 
-    - name: Test Environment
-      run: |
-        echo "Environment is ready for Vercel Deployment"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Script
+        env:
+          AES_SECRET: ${{ secrets.AES_SECRET }}
+          LIVXOW_URL: ${{ secrets.LIVXOW_URL }}
+        run: python main.py
+
+      - name: Commit and Push
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add Sportzx.json
+          git commit -m "Update Sportzx.json" || exit 0
+          git push
