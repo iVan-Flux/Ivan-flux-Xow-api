@@ -8,7 +8,7 @@ import binascii
 from collections import OrderedDict
 from Crypto.Cipher import AES
 
-# 🔐 Load Secrets from GitHub
+# 🔐 GitHub Secrets থেকে ডেটা লোড করা
 AES_SECRET = os.getenv("AES_SECRET")
 TARGET_URL = os.getenv("LIVXOW_URL")
 
@@ -20,7 +20,9 @@ def get_token():
         reversed_b64 = encoded_str[::-1]
         hex_str = binascii.hexlify(reversed_b64.encode('utf-8')).decode('utf-8')
         return hex_str[::-1]
-    except: return None
+    except Exception as e:
+        print(f"Token Generation Error: {e}")
+        return None
 
 def format_match_date(date_str):
     try:
@@ -54,31 +56,37 @@ def process_links(links_input):
     return final_list
 
 def encrypt_json(data_dict):
+    if not AES_SECRET: raise Exception("AES_SECRET is missing!")
     key = AES_SECRET.encode()[:32]
     cipher = AES.new(key, AES.MODE_EAX)
     json_text = json.dumps(data_dict, ensure_ascii=False)
     ciphertext, tag = cipher.encrypt_and_digest(json_text.encode('utf-8'))
-    # Nonce + Tag + Ciphertext মিলিয়ে এনক্রিপ্ট ডেটা তৈরি
     return base64.b64encode(cipher.nonce + tag + ciphertext).decode('utf-8')
 
 def run():
-    if not AES_SECRET or not TARGET_URL:
-        print("Missing Secrets!")
-        return
+    # চেক করছি সব সিক্রেট আছে কি না
+    if not AES_SECRET:
+        raise Exception("Error: AES_SECRET not found in GitHub Secrets!")
+    if not TARGET_URL:
+        raise Exception("Error: LIVXOW_URL not found in GitHub Secrets!")
 
+    print(f"Connecting to Source...")
     token = get_token()
     payload = json.dumps({"requestData": token, "from": "events"}, separators=(',', ':')).encode('utf-8')
     headers = {"User-Agent": "okhttp/4.9.0", "Content-Type": "application/json", "Accept-Encoding": "gzip"}
 
     try:
-        r = requests.post(TARGET_URL, data=payload, headers=headers, timeout=20)
+        r = requests.post(TARGET_URL, data=payload, headers=headers, timeout=30)
+        r.raise_for_status() # যদি সার্ভার এরর দেয় তবে এখানেই থেমে যাবে
+        
         raw_res = r.content
         if r.headers.get('Content-Encoding') == 'gzip':
             raw_res = gzip.decompress(raw_res)
         
         raw_data = json.loads(raw_res.decode('utf-8'))
+        print(f"Successfully fetched {len(raw_data)} items from source.")
+        
         events_list = []
-
         for item in raw_data:
             event_info = json.loads(item.get("event", "{}"))
             processed_streams = process_links(item.get("links", "[]"))
@@ -102,23 +110,30 @@ def run():
             ])
             events_list.append(match_obj)
 
-        update_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)).strftime("%I:%M:%S %p %d-%m-%Y")
+        # টাইম ক্যালকুলেশন (IST)
+        ist_now = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)).strftime("%I:%M:%S %p %d-%m-%Y")
         
         final_wrapped = OrderedDict([
             ("AUTHOR", "iVan_FLUx"),
             ("TELEGRAM", "https://t.me/iVan_flux"),
-            ("Last update time", update_time),
+            ("Last update time", ist_now),
             ("events", events_list)
         ])
 
-        # এনক্রিপ্ট করে ফাইলে সেভ করা
-        encrypted_result = {"data": encrypt_json(final_wrapped)}
+        # এনক্রিপ্ট করা
+        print("Encrypting data...")
+        encrypted_data = encrypt_json(final_wrapped)
+        
+        # ফাইল তৈরি করা (এটাই আগেরবার মিস হচ্ছিল)
+        result_to_save = {"data": encrypted_data}
         with open("Sportzx.json", "w", encoding="utf-8") as f:
-            json.dump(encrypted_result, f, indent=4)
-        print("Sportzx.json generated and encrypted!")
+            json.dump(result_to_save, f, indent=4)
+        
+        print("Success: Sportzx.json has been created!")
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Critical Error: {e}")
+        exit(1) # এরর হলে যাতে অ্যাকশন ফেইল দেখায়
 
 if __name__ == "__main__":
     run()
