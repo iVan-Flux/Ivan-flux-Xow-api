@@ -1,16 +1,15 @@
-name: Generate Encrypted JSON
+name: Generate Ivan-FluX JSON
 
 on:
   schedule:
-    - cron: '0 * * * *' # প্রতি ঘন্টায় রান হবে
-  workflow_dispatch: # ম্যানুয়ালি রান করার অপশন
+    - cron: '0 * * * *' # প্রতি ঘন্টায়
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -18,9 +17,9 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install requests pycryptodome
 
-      - name: Run Script
+      - name: Run Generator
         env:
           AES_SECRET: ${{ secrets.AES_SECRET }}
           LIVXOW_URL: ${{ secrets.LIVXOW_URL }}
@@ -30,6 +29,6 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add Sportzx.json
-          git commit -m "Update Sportzx.json" || exit 0
+          git add Ivan-FluX.json
+          git commit -m "Update Ivan-FluX.json" || exit 0
           git push
