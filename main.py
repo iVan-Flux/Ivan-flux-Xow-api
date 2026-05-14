@@ -38,22 +38,32 @@ def process_links(links_input):
 
     for link_obj in links_input:
         name = link_obj.get("name", "").strip()
-        bare_qualities = ["AQ", "LQ", "SD", "HD", "FHD", "4K", "AD", "LOW", "MED", "HIGH"]
-        if name.upper() in bare_qualities:
-            link_obj["name"] = f"SPORTIFy {name}"
-        elif "CricZ" in name or "cricz" in name:
-            link_obj["name"] = name.replace("CricZ", "SPORTIFy").replace("cricz", "SPORTIFy")
-        
-        url_val = link_obj.get("link", "") or link_obj.get("url", "")
-        if "otte.live.fly.ww.aiv-cdn.net" in url_val:
-            new_url = url_val.replace(".fly.", ".cf.")
-            link_obj["link"] = new_url
-            link_obj["url"] = new_url
+        link_val = link_obj.get("link", "") or link_obj.get("url", "")
+
+        # --- 🎯 লজিক ৩: Link 1 রিপ্লেস করার কাজ ---
+        if name == "Link 1" and "file.genoads.com/ch1.m3u8" in link_val:
+            link_obj["name"] = "Ivan-FluX"
+            link_obj["link"] = "https://fallback-video.ivan-flux.workers.dev/video/index.m3u8"
+            link_obj["url"] = "https://fallback-video.ivan-flux.workers.dev/video/index.m3u8"
+        else:
+            # আগের সেই "SPORTIFy" ব্র্যান্ডিং লজিক
+            bare_qualities = ["AQ", "LQ", "SD", "HD", "FHD", "4K", "AD", "LOW", "MED", "HIGH"]
+            if name.upper() in bare_qualities:
+                link_obj["name"] = f"SPORTIFy {name}"
+            elif "CricZ" in name or "cricz" in name:
+                link_obj["name"] = name.replace("CricZ", "SPORTIFy").replace("cricz", "SPORTIFy")
+            
+            # আগের সেই ডোমেইন ফিক্স লজিক
+            if "otte.live.fly.ww.aiv-cdn.net" in link_val:
+                new_url = link_val.replace(".fly.", ".cf.")
+                link_obj["link"] = new_url
+                link_obj["url"] = new_url
+
         final_list.append(link_obj)
     return final_list
 
 def encrypt_json(data_dict):
-    key = AES_SECRET.encode()[:32]
+    key = AES_SECRET.strip().encode()[:32]
     cipher = AES.new(key, AES.MODE_EAX)
     json_text = json.dumps(data_dict, ensure_ascii=False)
     ciphertext, tag = cipher.encrypt_and_digest(json_text.encode('utf-8'))
@@ -66,16 +76,11 @@ def run():
 
     token = get_token()
     payload = json.dumps({"requestData": token, "from": "events"}, separators=(',', ':'))
-    headers = {
-        "User-Agent": "okhttp/4.9.0",
-        "Content-Type": "application/json"
-    }
+    headers = {"User-Agent": "okhttp/4.9.0", "Content-Type": "application/json"}
 
     try:
-        # সরাসরি রিকোয়েস্ট (Gzip প্যারা নেই)
         r = requests.post(TARGET_URL, data=payload, headers=headers, timeout=30)
         r.raise_for_status()
-        
         raw_data = r.json()
         events_list = []
 
@@ -84,7 +89,6 @@ def run():
             processed_streams = process_links(item.get("links", "[]"))
             match_title = event_info.get("eventName") or event_info.get("seriesName") or "Unknown"
 
-            # তোর দেওয়া হুবহু সিরিয়াল
             match_obj = OrderedDict([
                 ("id", str(item.get("id", ""))),
                 ("title", match_title),
@@ -103,20 +107,24 @@ def run():
             ])
             events_list.append(match_obj)
 
-        ist_now = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)).strftime("%I:%M:%S %p %d-%m-%Y")
+        # --- 🎯 লজিক ৪: নতুন টপ হেডার সেটআপ ---
+        update_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)).strftime("%I:%M:%S %p %d-%m-%Y")
         
         final_wrapped = OrderedDict([
-            ("AUTHOR", "iVan_FLUx"),
-            ("TELEGRAM", "https://t.me/iVan_flux"),
-            ("Last update time", ist_now),
+            (" NAME ", "FluX-oW Live event ( Auto updated)"),
+            ("AUTHOR", "iVan_FluX"),
+            ("CONTACT (OWNER)", "https://t.me/iVan_flux"),
+            ("TELEGRAM CHANNEL", "https://t.me/api_hub_by_ivan"),
+            ("Last update time", update_time),
             ("events", events_list)
         ])
 
+        # লজিক ২: নতুন ফাইল নেমে সেভ করা
         encrypted_data = encrypt_json(final_wrapped)
-        with open("Sportzx.json", "w", encoding="utf-8") as f:
+        with open("Ivan-FluX.json", "w", encoding="utf-8") as f:
             json.dump({"data": encrypted_data}, f, indent=4)
         
-        print("Done: Sportzx.json is ready!")
+        print("Done: Ivan-FluX.json has been generated!")
 
     except Exception as e:
         print(f"Error: {e}")
