@@ -32,7 +32,7 @@ def format_match_date(date_str):
     return date_str
 
 def process_links(links_input):
-    """Applies branding, domain fixes, and standardizes link keys to match sportzx format."""
+    """Applies branding, clean tokenApi, and standardizes link keys."""
     final_list = []
     if isinstance(links_input, str):
         try: links_input = json.loads(links_input)
@@ -42,7 +42,17 @@ def process_links(links_input):
     for link_obj in links_input:
         original_name = link_obj.get("name", "").strip()
         link_val = link_obj.get("link", "") or link_obj.get("url", "")
-        stream_type = link_obj.get("scheme", 0) # Mapping scheme to type
+        stream_type = link_obj.get("scheme", 0) 
+        
+        # --- 🎯 Clean tokenApi logic to remove backslashes ---
+        token_api_raw = link_obj.get("tokenApi", "")
+        token_api_final = token_api_raw
+        if isinstance(token_api_raw, str) and (token_api_raw.startswith("{") or token_api_raw.startswith("[")):
+            try:
+                # Convert stringified JSON to a proper JSON Object
+                token_api_final = json.loads(token_api_raw)
+            except:
+                token_api_final = token_api_raw
 
         # Handle 'Link 1' replacement logic
         if original_name == "Link 1" and "file.genoads.com/ch1.m3u8" in link_val:
@@ -56,17 +66,17 @@ def process_links(links_input):
             else:
                 final_title = original_name.replace("CricZ", "SPORTIFy").replace("cricz", "SPORTIFy")
             
-            # Domain replacement logic
+            # Domain replacement logic (.fly. -> .cf.)
             final_link = link_val.replace(".fly.", ".cf.") if "otte.live.fly.ww.aiv-cdn.net" in link_val else link_val
 
-        # Standardize link object with specific keys and order
+        # Standardize link object matching your requirements
         standard_link = OrderedDict([
-            ("title", final_title), # Renamed from name
+            ("title", final_title),
             ("link", final_link),
-            ("logo", ""),           # Added empty logo key
-            ("type", stream_type),  # Renamed from scheme
+            ("logo", ""),
+            ("type", stream_type),
             ("api", link_obj.get("api", "")),
-            ("tokenApi", link_obj.get("tokenApi", ""))
+            ("tokenApi", token_api_final) # Now contains clean structured data
         ])
         final_list.append(standard_link)
     return final_list
@@ -85,6 +95,7 @@ def run():
         exit(1)
 
     token = get_token()
+    # Payload logic matching the source app
     payload = json.dumps({"requestData": token, "from": "events"}, separators=(',', ':'))
     headers = {"User-Agent": "okhttp/4.9.0", "Content-Type": "application/json"}
 
@@ -93,7 +104,7 @@ def run():
         r.raise_for_status()
         raw_data = r.json()
         
-        # Current time in IST for Status calculations
+        # Calculate Current Time in IST (UTC+5:30)
         now_ist = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)
         
         events_list = []
@@ -103,7 +114,7 @@ def run():
             event_info = json.loads(item.get("event", "{}"))
             match_title = event_info.get("eventName") or event_info.get("seriesName") or "Unknown"
             
-            # Time parsing for Status logic
+            # Date/Time Parsing for Status Logic
             start_str = f"{format_match_date(event_info.get('date', ''))} {event_info.get('time', '')}"
             end_str = f"{format_match_date(event_info.get('end_date', ''))} {event_info.get('end_time', '')}"
             
@@ -117,20 +128,21 @@ def run():
                     status = "Live"; live_count += 1
                 else:
                     status = "Finish"; finish_count += 1
-            except: upcoming_count += 1
+            except: 
+                upcoming_count += 1
 
-            # Match object construction matching sportzx requirements
+            # Match object construction with your specific hierarchy
             match_obj = OrderedDict([
-                ("id", int(item.get("id", 0))), # ID as Integer
+                ("id", int(item.get("id", 0))),
                 ("title", match_title),
-                ("image", event_info.get("eventLogo", "")), # Renamed from Title image
+                ("image", event_info.get("eventLogo", "")),
                 ("cat", event_info.get("category", "Sports")),
                 ("eventInfo", OrderedDict([
                     ("teamA", event_info.get("teamAName", "Team A")),
                     ("teamB", event_info.get("teamBName", "Team B")),
                     ("teamAFlag", event_info.get("teamAFlag", "")),
                     ("teamBFlag", event_info.get("teamBFlag", "")),
-                    ("eventName", match_title), # Match title inserted here
+                    ("eventName", match_title),
                     ("isHot", "0"),
                     ("Status", status),
                     ("startTime", f"{start_str} +0000"),
@@ -140,11 +152,11 @@ def run():
             ])
             events_list.append(match_obj)
 
-        # Sorting: Live first, then Upcoming, then Finish
+        # Sorting Logic: Live first, then Upcoming, then Finish
         priority = {"Live": 1, "Upcoming": 2, "Finish": 3}
         events_list.sort(key=lambda x: priority.get(x["eventInfo"]["Status"], 4))
 
-        # Prepare final wrapped response
+        # Final Header and Counts
         update_time_str = now_ist.strftime("%I:%M:%S %p %d-%m-%Y")
         final_wrapped = OrderedDict([
             (" NAME ", "FluX-oW Live event ( Auto updated)"),
@@ -158,15 +170,15 @@ def run():
             ("events", events_list)
         ])
 
-        # AES Encryption and File Save
+        # AES Encryption and File Storage
         encrypted_data = encrypt_json(final_wrapped)
         with open("Ivan-FluX.json", "w", encoding="utf-8") as f:
             json.dump({"data": encrypted_data}, f, indent=4)
         
-        print(f"Success: Ivan-FluX.json ready. Live: {live_count}, Upcoming: {upcoming_count}, Finish: {finish_count}")
+        print(f"Success: Ivan-FluX.json created. (L:{live_count} U:{upcoming_count} F:{finish_count})")
 
     except Exception as e:
-        print(f"Execution Error: {e}")
+        print(f"Critical Error: {e}")
         exit(1)
 
 if __name__ == "__main__":
