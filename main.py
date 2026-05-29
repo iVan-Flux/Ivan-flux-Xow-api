@@ -12,7 +12,7 @@ AES_SECRET = os.getenv("AES_SECRET")
 TARGET_URL = os.getenv("LIVXOW_URL")
 
 def get_token():
-    """Generates the security token based on current UTC time."""
+    """Generates a security token based on current UTC time."""
     current_time = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     try:
         encoded_bytes = base64.b64encode(current_time.encode('utf-8'))
@@ -23,7 +23,7 @@ def get_token():
     except: return None
 
 def format_match_date(date_str):
-    """Converts date format from DD/MM/YYYY to YYYY/MM/DD."""
+    """Reformats date string to YYYY/MM/DD."""
     try:
         if "/" in date_str:
             parts = date_str.split("/")
@@ -32,7 +32,7 @@ def format_match_date(date_str):
     return date_str
 
 def process_links(links_input):
-    """Processes branding rules, domain fixes, and specific link replacements."""
+    """Applies branding, domain fixes, and standardizes link keys to match sportzx format."""
     final_list = []
     if isinstance(links_input, str):
         try: links_input = json.loads(links_input)
@@ -40,33 +40,39 @@ def process_links(links_input):
     if not isinstance(links_input, list): return []
 
     for link_obj in links_input:
-        name = link_obj.get("name", "").strip()
+        original_name = link_obj.get("name", "").strip()
         link_val = link_obj.get("link", "") or link_obj.get("url", "")
+        stream_type = link_obj.get("scheme", 0) # Mapping scheme to type
 
-        # Logic 3: Replace 'Link 1' with specific fallback stream
-        if name == "Link 1" and "file.genoads.com/ch1.m3u8" in link_val:
-            link_obj["name"] = "Ivan-FluX"
-            link_obj["link"] = "https://fallback-video.ivan-flux.workers.dev/video/index.m3u8"
-            link_obj["url"] = "https://fallback-video.ivan-flux.workers.dev/video/index.m3u8"
+        # Handle 'Link 1' replacement logic
+        if original_name == "Link 1" and "file.genoads.com/ch1.m3u8" in link_val:
+            final_title = "Ivan-FluX"
+            final_link = "https://fallback-video.ivan-flux.workers.dev/video/index.m3u8"
         else:
-            # Original 'SPORTIFy' Branding logic
+            # Branding logic: Add SPORTIFy prefix or replace CricZ
             bare_qualities = ["AQ", "LQ", "SD", "HD", "FHD", "4K", "AD", "LOW", "MED", "HIGH"]
-            if name.upper() in bare_qualities:
-                link_obj["name"] = f"SPORTIFy {name}"
-            elif "CricZ" in name or "cricz" in name:
-                link_obj["name"] = name.replace("CricZ", "SPORTIFy").replace("cricz", "SPORTIFy")
+            if original_name.upper() in bare_qualities:
+                final_title = f"SPORTIFy {original_name}"
+            else:
+                final_title = original_name.replace("CricZ", "SPORTIFy").replace("cricz", "SPORTIFy")
             
-            # Original Domain Fix logic (.fly. -> .cf.)
-            if "otte.live.fly.ww.aiv-cdn.net" in link_val:
-                new_url = link_val.replace(".fly.", ".cf.")
-                link_obj["link"] = new_url
-                link_obj["url"] = new_url
+            # Domain replacement logic
+            final_link = link_val.replace(".fly.", ".cf.") if "otte.live.fly.ww.aiv-cdn.net" in link_val else link_val
 
-        final_list.append(link_obj)
+        # Standardize link object with specific keys and order
+        standard_link = OrderedDict([
+            ("title", final_title), # Renamed from name
+            ("link", final_link),
+            ("logo", ""),           # Added empty logo key
+            ("type", stream_type),  # Renamed from scheme
+            ("api", link_obj.get("api", "")),
+            ("tokenApi", link_obj.get("tokenApi", ""))
+        ])
+        final_list.append(standard_link)
     return final_list
 
 def encrypt_json(data_dict):
-    """Encrypts the JSON data using AES-EAX mode."""
+    """Encrypts the structured JSON data using AES-EAX."""
     key = AES_SECRET.strip().encode()[:32]
     cipher = AES.new(key, AES.MODE_EAX)
     json_text = json.dumps(data_dict, ensure_ascii=False)
@@ -75,7 +81,7 @@ def encrypt_json(data_dict):
 
 def run():
     if not AES_SECRET or not TARGET_URL:
-        print("Error: Secrets missing!")
+        print("Error: Required GitHub Secrets are missing!")
         exit(1)
 
     token = get_token()
@@ -87,20 +93,17 @@ def run():
         r.raise_for_status()
         raw_data = r.json()
         
-        # Determine Current Time in IST
+        # Current time in IST for Status calculations
         now_ist = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)
         
         events_list = []
-        live_count = 0
-        upcoming_count = 0
-        finish_count = 0
+        live_count, upcoming_count, finish_count = 0, 0, 0
 
         for item in raw_data:
             event_info = json.loads(item.get("event", "{}"))
-            processed_channels = process_links(item.get("links", "[]"))
             match_title = event_info.get("eventName") or event_info.get("seriesName") or "Unknown"
-
-            # Parse Start and End times for Status logic
+            
+            # Time parsing for Status logic
             start_str = f"{format_match_date(event_info.get('date', ''))} {event_info.get('time', '')}"
             end_str = f"{format_match_date(event_info.get('end_date', ''))} {event_info.get('end_time', '')}"
             
@@ -108,46 +111,41 @@ def run():
             try:
                 start_dt = datetime.datetime.strptime(start_str, "%Y/%m/%d %H:%M:%S")
                 end_dt = datetime.datetime.strptime(end_str, "%Y/%m/%d %H:%M:%S")
-                
                 if now_ist < start_dt:
-                    status = "Upcoming"
-                    upcoming_count += 1
+                    status = "Upcoming"; upcoming_count += 1
                 elif start_dt <= now_ist <= end_dt:
-                    status = "Live"
-                    live_count += 1
+                    status = "Live"; live_count += 1
                 else:
-                    status = "Finish"
-                    finish_count += 1
-            except:
-                upcoming_count += 1 # Default to Upcoming if time parse fails
+                    status = "Finish"; finish_count += 1
+            except: upcoming_count += 1
 
-            # Building the Match Object with the new Hierarchy
+            # Match object construction matching sportzx requirements
             match_obj = OrderedDict([
-                ("id", str(item.get("id", ""))),
+                ("id", int(item.get("id", 0))), # ID as Integer
                 ("title", match_title),
-                ("Title image", event_info.get("eventLogo", "")),
+                ("image", event_info.get("eventLogo", "")), # Renamed from Title image
                 ("cat", event_info.get("category", "Sports")),
                 ("eventInfo", OrderedDict([
                     ("teamA", event_info.get("teamAName", "Team A")),
                     ("teamB", event_info.get("teamBName", "Team B")),
                     ("teamAFlag", event_info.get("teamAFlag", "")),
                     ("teamBFlag", event_info.get("teamBFlag", "")),
+                    ("eventName", match_title), # Match title inserted here
                     ("isHot", "0"),
-                    ("Status", status), # Added Status key under isHot
+                    ("Status", status),
                     ("startTime", f"{start_str} +0000"),
                     ("endTime", f"{end_str} +0000")
                 ])),
-                ("channels_data", processed_channels) # Renamed from Stream links
+                ("channels_data", process_links(item.get("links", "[]")))
             ])
             events_list.append(match_obj)
 
-        # Logic for Shortlisting (Sorting): Live > Upcoming > Finish
-        status_priority = {"Live": 1, "Upcoming": 2, "Finish": 3}
-        events_list.sort(key=lambda x: status_priority.get(x["eventInfo"]["Status"], 4))
+        # Sorting: Live first, then Upcoming, then Finish
+        priority = {"Live": 1, "Upcoming": 2, "Finish": 3}
+        events_list.sort(key=lambda x: priority.get(x["eventInfo"]["Status"], 4))
 
-        # Top Header Setup
+        # Prepare final wrapped response
         update_time_str = now_ist.strftime("%I:%M:%S %p %d-%m-%Y")
-        
         final_wrapped = OrderedDict([
             (" NAME ", "FluX-oW Live event ( Auto updated)"),
             ("AUTHOR", "iVan_FluX"),
@@ -160,15 +158,15 @@ def run():
             ("events", events_list)
         ])
 
-        # Encrypt and Save to File
+        # AES Encryption and File Save
         encrypted_data = encrypt_json(final_wrapped)
         with open("Ivan-FluX.json", "w", encoding="utf-8") as f:
             json.dump({"data": encrypted_data}, f, indent=4)
         
-        print(f"Done: Ivan-FluX.json generated. Live: {live_count}, Upcoming: {upcoming_count}, Finish: {finish_count}")
+        print(f"Success: Ivan-FluX.json ready. Live: {live_count}, Upcoming: {upcoming_count}, Finish: {finish_count}")
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Execution Error: {e}")
         exit(1)
 
 if __name__ == "__main__":
