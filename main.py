@@ -57,7 +57,7 @@ def process_links(links_input):
         # Handle 'Link 1' replacement logic
         if original_name == "Link 1" and "file.genoads.com/ch1.m3u8" in link_val:
             final_title = "Ivan-FluX"
-            final_link = "https://fallback-video.ivan-flux.workers.dev/video/index.m3u8"
+            final_link = "https://fallback-video.ivan-fluxo.workers.dev/video/index.m3u8"
         else:
             # Branding logic: Add SPORTIFy prefix or replace CricZ
             bare_qualities = ["AQ", "LQ", "SD", "HD", "FHD", "4K", "AD", "LOW", "MED", "HIGH"]
