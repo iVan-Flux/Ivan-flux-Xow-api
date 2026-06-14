@@ -66,8 +66,8 @@ def process_links(links_input):
             else:
                 final_title = original_name.replace("CricZ", "SPORTIFy").replace("cricz", "SPORTIFy")
             
-            # Domain replacement logic (.fly. -> .cf.)
-            final_link = link_val.replace(".fly.", ".cf.") if "otte.live.fly.ww.aiv-cdn.net" in link_val else link_val
+            # Domain replacement logic (.ok. -> .cf.)
+            final_link = link_val.replace(".ok.", ".cf.") if "otte.live.ok.ww.aiv-cdn.net" in link_val else link_val
 
         # Standardize link object matching your requirements
         standard_link = OrderedDict([
